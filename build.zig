@@ -61,7 +61,7 @@ pub fn build(b: *std.Build) !void {
 
     const bench = b.addExecutable(.{
         .name = "bench",
-        .root_source_file = b.path("src/bench/main.zig"),
+        .root_source_file = b.path("bench/main.zig"),
         .target = target,
         .optimize = .ReleaseFast,
     });
@@ -71,7 +71,15 @@ pub fn build(b: *std.Build) !void {
     const bench_step = b.step("bench", "Run benchmarks");
     bench_step.dependOn(&run_bench.step);
 
-    setupTests(b, target, optimize, farbe_module);
+    const main_tests = b.addTest(.{
+        .root_source_file = b.path("test/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    main_tests.root_module.addImport("farbe", farbe_module);
+
+    const test_step = b.step("test", "Run tests");
+    test_step.dependOn(&b.addRunArtifact(main_tests).step);
 
     if (example_name) |name| {
         const example = try setupExample(b, name, binding, target, optimize, lib, farbe_module);
@@ -239,23 +247,6 @@ fn setupLibrary(
         b.getInstallStep().dependOn(&header_install.step);
         lib.installHeader(b.path("include/c/farbe.h"), "farbe.h");
     }
-}
-
-fn setupTests(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    farbe_module: *std.Build.Module,
-) void {
-    const main_tests = b.addTest(.{
-        .root_source_file = b.path("src/test.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    main_tests.root_module.addImport("farbe", farbe_module);
-
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&b.addRunArtifact(main_tests).step);
 }
 
 fn fileExists(path: []const u8) bool {

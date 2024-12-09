@@ -97,30 +97,38 @@ pub const HSV = extern struct {
     ///
     /// This function converts a color from the HSV color space to the RGBA color space.
     pub fn toRgba(self: @This()) RGBA {
-        const h = @mod(self.h, 360.0) / 60.0;
+        const h = self.h;
         const s = self.s;
         const v = self.v;
 
-        const c = v * s;
-        const x = c * (1 - @abs(@mod(h, 2) - 1));
-        const m = v - c;
+        if (s <= 0.0) {
+            const val: u8 = @intFromFloat(@round(v * 255.0));
+            return .{
+                .r = val,
+                .g = val,
+                .b = val,
+                .a = @intFromFloat(@round(self.a * 255.0)),
+            };
+        }
 
-        const i = @as(u3, @intFromFloat(h));
-        const rgb = switch (i) {
-            0 => .{ c, x, 0 },
-            1 => .{ x, c, 0 },
-            2 => .{ 0, c, x },
-            3 => .{ 0, x, c },
-            4 => .{ x, 0, c },
-            else => .{ c, 0, x },
+        const h_sector = h * 6.0;
+        const sector = @as(u3, @intFromFloat(@floor(h_sector)));
+        const f = h_sector - @floor(h_sector);
+
+        const p = v * (1.0 - s);
+        const q = v * (1.0 - s * f);
+        const t = v * (1.0 - s * (1.0 - f));
+
+        const rgb = switch (sector) {
+            0 => .{ v, t, p },
+            1 => .{ q, v, p },
+            2 => .{ p, v, t },
+            3 => .{ p, q, v },
+            4 => .{ t, p, v },
+            else => .{ v, p, q },
         };
 
-        return .{
-            .r = @intFromFloat((rgb[0] + m) * 255),
-            .g = @intFromFloat((rgb[1] + m) * 255),
-            .b = @intFromFloat((rgb[2] + m) * 255),
-            .a = @intFromFloat(self.a * 255),
-        };
+        return .{ .r = @intFromFloat(@round(rgb[0] * 255.0)), .g = @intFromFloat(@round(rgb[1] * 255.0)), .b = @intFromFloat(@round(rgb[2] * 255.0)), .a = @intFromFloat(@round(self.a * 255.0)) };
     }
 
     /// Creates a new `Hsv` color from an `Hsla` color.

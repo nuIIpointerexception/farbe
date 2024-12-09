@@ -249,30 +249,31 @@ pub const RGBA = packed struct {
     ///
     /// This function creates a new `Rgba` color from an `Hsv` color.
     pub fn fromHsv(color: @import("hsv.zig").HSV) @This() {
-        const h = @mod(color.h, 360.0) / 60.0;
+        const h = color.h * 6.0;
         const s = color.s;
         const v = color.v;
 
-        const c = v * s;
-        const x = c * (1 - @abs(@mod(h, 2) - 1));
-        const m = v - c;
+        if (s <= 0) {
+            const val: u8 = @intFromFloat(@round(v * 255.0));
+            return .{ .r = val, .g = val, .b = val, .a = @intFromFloat(@round(color.a * 255.0)) };
+        }
 
-        const i = @as(u3, @intFromFloat(h));
-        const rgb = switch (i) {
-            0 => .{ c, x, 0 },
-            1 => .{ x, c, 0 },
-            2 => .{ 0, c, x },
-            3 => .{ 0, x, c },
-            4 => .{ x, 0, c },
-            else => .{ c, 0, x },
+        const sector = @as(u3, @intFromFloat(@floor(h)));
+        const f = h - @floor(h);
+        const p = v * (1.0 - s);
+        const q = v * (1.0 - s * f);
+        const t = v * (1.0 - s * (1.0 - f));
+
+        const rgb = switch (sector) {
+            0 => .{ v, t, p },
+            1 => .{ q, v, p },
+            2 => .{ p, v, t },
+            3 => .{ p, q, v },
+            4 => .{ t, p, v },
+            else => .{ v, p, q },
         };
 
-        return .{
-            .r = @intFromFloat((rgb[0] + m) * 255),
-            .g = @intFromFloat((rgb[1] + m) * 255),
-            .b = @intFromFloat((rgb[2] + m) * 255),
-            .a = @intFromFloat(color.a * 255),
-        };
+        return .{ .r = @intFromFloat(@round(rgb[0] * 255.0)), .g = @intFromFloat(@round(rgb[1] * 255.0)), .b = @intFromFloat(@round(rgb[2] * 255.0)), .a = @intFromFloat(@round(color.a * 255.0)) };
     }
 
     /// Converts this `Rgba` color to an `Hsv` color.
@@ -301,5 +302,46 @@ pub const RGBA = packed struct {
         const s = if (max == 0) 0 else delta / max;
 
         return .{ .h = h, .s = s, .v = max, .a = a };
+    }
+
+    /// Returns a new `Rgba` color with the opacity adjusted by the given factor.
+    ///
+    /// The factor is clamped between 0.0 and 1.0. A factor of 0.0 results in a fully
+    /// transparent color, while a factor of 1.0 results in no change to the opacity.
+    pub fn opacity(self: @This(), factor: f32) @This() {
+        if (factor >= 1.0) return self;
+        if (factor <= 0.0) return .{ .r = self.r, .g = self.g, .b = self.b, .a = 0 };
+
+        return .{
+            .r = self.r,
+            .g = self.g,
+            .b = self.b,
+            .a = @intFromFloat(@as(f32, @floatFromInt(self.a)) * factor),
+        };
+    }
+
+    /// Fades out this `Rgba` color by the given factor.
+    ///
+    /// The factor is clamped between 0.0 and 1.0. A factor of 0.0 results in no change,
+    /// while a factor of 1.0 completely fades out the color (sets alpha to 0.0).
+    pub fn fadeOut(self: *@This(), factor: f32) void {
+        if (factor >= 1.0) {
+            self.a = 0;
+            return;
+        }
+        if (factor <= 0.0) return;
+        const new_alpha = @as(f32, @floatFromInt(self.a)) * (1.0 - factor);
+        self.a = @intFromFloat(new_alpha);
+    }
+
+    /// Returns a grayscale version of this `Rgba` color.
+    ///
+    /// This is achieved by setting the red, green, and blue components to the same value.
+    pub fn grayscale(self: @This()) @This() {
+        const gray_f = @as(f32, @floatFromInt(self.r)) * 0.2126 +
+            @as(f32, @floatFromInt(self.g)) * 0.7152 +
+            @as(f32, @floatFromInt(self.b)) * 0.0722;
+        const gray_u8: u8 = @intFromFloat(gray_f);
+        return .{ .r = gray_u8, .g = gray_u8, .b = gray_u8, .a = self.a };
     }
 };

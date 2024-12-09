@@ -51,7 +51,9 @@ pub fn Rgba(args: anytype) !RGBA {
                 .b = math.clamp(@as(u8, @intCast(args[2])), 0, 255),
                 .a = math.clamp(@as(u8, @intCast(args[3])), 0, 255),
             };
-        } else if (ArgsType == HSLA) args.toRgba() else if (comptime valid.Hsla(ArgsType)) blk: {
+        } else if (ArgsType == HSLA or ArgsType == HSV) {
+            return args.toRgba();
+        } else if (comptime valid.Hsla(ArgsType)) blk: {
             const hsla_color = Hsla(args[0], args[1], args[2], if (args.len > 3) args[3] else 1.0);
             break :blk hsla_color.toRgba();
         } else error.UnsupportedStructType,
