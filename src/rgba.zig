@@ -16,12 +16,12 @@ pub const RGBA = packed struct {
     a: u8 = 255,
 
     /// Initializes a new `Rgba` color with the given red, green, blue, and alpha components.
-    pub fn init(r: u8, g: u8, b: u8, a: u8) @This() {
+    pub fn init(r: u8, g: u8, b: u8, a: u8) RGBA {
         return .{ .r = r, .g = g, .b = b, .a = a };
     }
 
     /// Blends this color with another color, taking into account their alpha values.
-    pub fn blend(self: @This(), other: @This()) @This() {
+    pub fn blend(self: RGBA, other: RGBA) RGBA {
         if (self.a == 255 and other.a == 255) {
             return .{
                 .r = @intCast((self.r + other.r) >> 1),
@@ -60,8 +60,8 @@ pub const RGBA = packed struct {
     ///
     /// If SIMD instructions are not available on the target architecture, this function falls
     /// back to the regular `Rgba.blend` implementation.
-    pub fn blendMultiple(comptime N: usize, colors1: [N]@This(), colors2: [N]@This()) [N]@This() {
-        var result: [N]@This() = undefined;
+    pub fn blendMultiple(comptime N: usize, colors1: [N]RGBA, colors2: [N]RGBA) [N]RGBA {
+        var result: [N]RGBA = undefined;
 
         if (@hasDecl(std.builtin.Type.Vector, "add")) {
             var i: usize = 0;
@@ -119,7 +119,7 @@ pub const RGBA = packed struct {
     }
 
     /// Converts this `Rgba` color to a `u32` value.
-    pub fn toU32(self: @This()) u32 {
+    pub fn toU32(self: RGBA) u32 {
         return @bitCast(self);
     }
 
@@ -128,7 +128,7 @@ pub const RGBA = packed struct {
     /// The string must be in the format `#RRGGBB` or `#RRGGBBAA`.
     ///
     /// If the string is not in a valid format, an error is returned.
-    pub fn fromStr(string: []const u8) !@This() {
+    pub fn fromStr(string: []const u8) !RGBA {
         if (string.len < 7 or string[0] != '#') return error.InvalidFormat;
 
         const r = try hex.parse(string[1..3]);
@@ -148,7 +148,7 @@ pub const RGBA = packed struct {
     /// The string must be in the format `#RRGGBB` or `#RRGGBBAA`.
     ///
     /// If the string is not in a valid format, a compile error is generated.
-    pub fn comptimeFromStr(comptime string: []const u8) @This() {
+    pub fn comptimeFromStr(comptime string: []const u8) RGBA {
         _ = valid.String(string);
 
         const parseHexPair = struct {
@@ -176,7 +176,7 @@ pub const RGBA = packed struct {
     ///
     /// This function converts a color from the HSLA (Hue, Saturation, Lightness, Alpha)
     /// color space to the RGBA color space.
-    pub fn fromHsla(color: @import("hsla.zig").HSLA) @This() {
+    pub fn fromHsla(color: @import("hsla.zig").HSLA) RGBA {
         if (color.s == 0.0) {
             const v = @as(u8, @intFromFloat(color.l * 255.0));
             return .{ .r = v, .g = v, .b = v, .a = @intFromFloat(color.a * 255.0) };
@@ -216,7 +216,7 @@ pub const RGBA = packed struct {
     ///
     /// This function converts a color from the RGBA color space to the HSLA
     /// (Hue, Saturation, Lightness, Alpha) color space.
-    pub fn toHsla(self: @This()) @import("hsla.zig").HSLA {
+    pub fn toHsla(self: RGBA) @import("hsla.zig").HSLA {
         const rf = @as(f32, @floatFromInt(self.r)) / 255.0;
         const gf = @as(f32, @floatFromInt(self.g)) / 255.0;
         const bf = @as(f32, @floatFromInt(self.b)) / 255.0;
@@ -248,7 +248,7 @@ pub const RGBA = packed struct {
     /// Converts this `Rgba` color to an `Hsv` color.
     ///
     /// This function creates a new `Rgba` color from an `Hsv` color.
-    pub fn fromHsv(color: @import("hsv.zig").HSV) @This() {
+    pub fn fromHsv(color: @import("hsv.zig").HSV) RGBA {
         const h = color.h * 6.0;
         const s = color.s;
         const v = color.v;
@@ -279,7 +279,7 @@ pub const RGBA = packed struct {
     /// Converts this `Rgba` color to an `Hsv` color.
     ///
     /// This function converts a color from the RGBA color space to the HSV color space.
-    pub fn toHsv(self: @This()) @import("hsv.zig").HSV {
+    pub fn toHsv(self: RGBA) @import("hsv.zig").HSV {
         const r = @as(f32, @floatFromInt(self.r)) / 255.0;
         const g = @as(f32, @floatFromInt(self.g)) / 255.0;
         const b = @as(f32, @floatFromInt(self.b)) / 255.0;
@@ -308,7 +308,7 @@ pub const RGBA = packed struct {
     ///
     /// The factor is clamped between 0.0 and 1.0. A factor of 0.0 results in a fully
     /// transparent color, while a factor of 1.0 results in no change to the opacity.
-    pub fn opacity(self: @This(), factor: f32) @This() {
+    pub fn opacity(self: RGBA, factor: f32) RGBA {
         if (factor >= 1.0) return self;
         if (factor <= 0.0) return .{ .r = self.r, .g = self.g, .b = self.b, .a = 0 };
 
@@ -324,7 +324,7 @@ pub const RGBA = packed struct {
     ///
     /// The factor is clamped between 0.0 and 1.0. A factor of 0.0 results in no change,
     /// while a factor of 1.0 completely fades out the color (sets alpha to 0.0).
-    pub fn fadeOut(self: *@This(), factor: f32) void {
+    pub fn fadeOut(self: *RGBA, factor: f32) void {
         if (factor >= 1.0) {
             self.a = 0;
             return;
@@ -337,7 +337,7 @@ pub const RGBA = packed struct {
     /// Returns a grayscale version of this `Rgba` color.
     ///
     /// This is achieved by setting the red, green, and blue components to the same value.
-    pub fn grayscale(self: @This()) @This() {
+    pub fn grayscale(self: RGBA) RGBA {
         const gray_f = @as(f32, @floatFromInt(self.r)) * 0.2126 +
             @as(f32, @floatFromInt(self.g)) * 0.7152 +
             @as(f32, @floatFromInt(self.b)) * 0.0722;

@@ -13,12 +13,12 @@ pub const HSV = extern struct {
     a: f32,
 
     /// Initializes a new `Hsv` color with the given hue, saturation, value, and alpha components.
-    pub fn init(h: f32, s: f32, v: f32, a: f32) @This() {
+    pub fn init(h: f32, s: f32, v: f32, a: f32) HSV {
         return .{ .h = h, .s = s, .v = v, .a = a };
     }
 
     /// Blends this color with another color using alpha-weighted interpolation in HSV space.
-    pub fn blend(self: @This(), other: @This()) @This() {
+    pub fn blend(self: HSV, other: HSV) HSV {
         const HALF = 0.5;
         const h_diff = other.h - self.h;
         const adj = @floor((h_diff + 180.0) / 360.0) * 360.0;
@@ -31,7 +31,7 @@ pub const HSV = extern struct {
     }
 
     /// Returns a grayscale version of this `Hsv` color.
-    pub fn grayscale(self: *const @This()) @This() {
+    pub fn grayscale(self: *const HSV) HSV {
         return .{
             .h = self.h,
             .s = 0.0,
@@ -43,7 +43,7 @@ pub const HSV = extern struct {
     /// Fades out this `Hsv` color by the given factor.
     ///
     /// 1.0 is fully opaque, 0.0 is fully transparent.
-    pub fn fadeOut(self: *@This(), factor: f32) void {
+    pub fn fadeOut(self: *HSV, factor: f32) void {
         if (factor >= 1.0) {
             self.a = 0;
             return;
@@ -55,7 +55,7 @@ pub const HSV = extern struct {
     /// Returns a new `Hsv` color with the opacity adjusted by the given factor.
     ///
     /// 1.0 is fully opaque, 0.0 is fully transparent.
-    pub fn opacity(self: *const @This(), factor: f32) @This() {
+    pub fn opacity(self: *const HSV, factor: f32) HSV {
         const new_alpha = if (factor >= 1.0) self.a else if (factor <= 0.0) 0 else self.a * factor;
         return .{
             .h = self.h,
@@ -68,7 +68,7 @@ pub const HSV = extern struct {
     /// Creates a new `Hsv` color from an `Rgba` color.
     ///
     /// This function converts a color from the RGBA color space to the HSV color space.
-    pub fn fromRgba(rgba: RGBA) @This() {
+    pub fn fromRgba(rgba: RGBA) HSV {
         const r = @as(f32, @floatFromInt(rgba.r)) / 255.0;
         const g = @as(f32, @floatFromInt(rgba.g)) / 255.0;
         const b = @as(f32, @floatFromInt(rgba.b)) / 255.0;
@@ -96,7 +96,7 @@ pub const HSV = extern struct {
     /// Converts this `Hsv` color to an `Rgba` color.
     ///
     /// This function converts a color from the HSV color space to the RGBA color space.
-    pub fn toRgba(self: @This()) RGBA {
+    pub fn toRgba(self: HSV) RGBA {
         const h = self.h;
         const s = self.s;
         const v = self.v;
@@ -134,7 +134,7 @@ pub const HSV = extern struct {
     /// Creates a new `Hsv` color from an `Hsla` color.
     ///
     /// This function converts a color from the HSLA color space to the HSV color space.
-    pub fn fromHsla(hsla: HSLA) @This() {
+    pub fn fromHsla(hsla: HSLA) HSV {
         const l = hsla.l;
         const v = l + hsla.s * @min(l, 1 - l);
         const s = if (v == 0) 0 else 2 * (1 - l / v);
@@ -144,7 +144,7 @@ pub const HSV = extern struct {
     /// Converts this `Hsv` color to an `Hsla` color.
     ///
     /// This function converts a color from the HSV color space to the HSLA color space.
-    pub fn toHsla(self: @This()) HSLA {
+    pub fn toHsla(self: HSV) HSLA {
         const v = self.v;
         const s = self.s;
         const l = v * (1 - s / 2);
