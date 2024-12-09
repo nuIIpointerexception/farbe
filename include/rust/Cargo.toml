@@ -1,0 +1,18 @@
+[package]
+name = "farbe-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for the Farbe color library"
+license = "MIT"
+
+[features]
+default = ["static"]
+static = []
+dynamic = []
+
+[lib]
+name = "farbe_rs"
+crate-type = ["rlib", "cdylib"]
+
+[build-dependencies]
+bindgen = "0.69"
