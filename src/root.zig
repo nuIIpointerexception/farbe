@@ -33,7 +33,7 @@ const valid = @import("valid.zig");
 /// const red3 = try rgba("#FF0000");             // from hex string
 /// const red4 = try rgba(hsla(0.0, 1.0, 0.5, 1.0)); // from HSLA color
 /// ```
-pub fn Rgba(args: anytype) !RGBA {
+pub fn rgba(args: anytype) !RGBA {
     const ArgsType = @TypeOf(args);
 
     return switch (@typeInfo(ArgsType)) {
@@ -45,16 +45,30 @@ pub fn Rgba(args: anytype) !RGBA {
                     return error.InvalidArgCount;
                 }
             }
+
+            if (@TypeOf(args[0]) == u8 and
+                @TypeOf(args[1]) == u8 and
+                @TypeOf(args[2]) == u8 and
+                @TypeOf(args[3]) == u8)
+            {
+                break :blk RGBA{
+                    .r = args[0],
+                    .g = args[1],
+                    .b = args[2],
+                    .a = args[3],
+                };
+            }
+
             break :blk RGBA{
-                .r = math.clamp(@as(u8, @intCast(args[0])), 0, 255),
-                .g = math.clamp(@as(u8, @intCast(args[1])), 0, 255),
-                .b = math.clamp(@as(u8, @intCast(args[2])), 0, 255),
-                .a = math.clamp(@as(u8, @intCast(args[3])), 0, 255),
+                .r = if (args[0] > 255) 255 else if (args[0] < 0) 0 else @intCast(args[0]),
+                .g = if (args[1] > 255) 255 else if (args[1] < 0) 0 else @intCast(args[1]),
+                .b = if (args[2] > 255) 255 else if (args[2] < 0) 0 else @intCast(args[2]),
+                .a = if (args[3] > 255) 255 else if (args[3] < 0) 0 else @intCast(args[3]),
             };
         } else if (ArgsType == HSLA or ArgsType == HSV) {
             return args.toRgba();
-        } else if (comptime valid.Hsla(ArgsType)) blk: {
-            const hsla_color = Hsla(args[0], args[1], args[2], if (args.len > 3) args[3] else 1.0);
+        } else if (comptime valid.isHsla(ArgsType)) blk: {
+            const hsla_color = hsla(args[0], args[1], args[2], if (args.len > 3) args[3] else 1.0);
             break :blk hsla_color.toRgba();
         } else error.UnsupportedStructType,
 
@@ -85,7 +99,7 @@ pub fn Rgba(args: anytype) !RGBA {
                 if (array_info.child == u8) {
                     break :blk RGBA.fromStr(args);
                 }
-            } else if (valid.ZigStr(child)) {
+            } else if (valid.isStr(child)) {
                 break :blk RGBA.fromStr(args);
             }
             if (comptime true) {
@@ -107,7 +121,7 @@ pub fn Rgba(args: anytype) !RGBA {
             }
         },
 
-        else => if (comptime valid.ZigStr(ArgsType)) blk: {
+        else => if (comptime valid.isStr(ArgsType)) blk: {
             if (comptime std.mem.eql(u8, args, "")) {
                 @compileError("Empty string is not a valid color");
             }
@@ -127,7 +141,7 @@ pub fn Rgba(args: anytype) !RGBA {
 /// If any of the components are not within the valid range (0.0-360.0 for hue, 0.0-1.0 for saturation and lightness, 0.0-1.0 for alpha),
 /// a compile error is generated if they are compile-time values,
 /// or they are clamped to the valid range if they are runtime values.
-pub fn Hsla(hue: anytype, saturation: anytype, lightness: anytype, alpha: anytype) HSLA {
+pub fn hsla(hue: anytype, saturation: anytype, lightness: anytype, alpha: anytype) HSLA {
     const T = @TypeOf(hue);
     if (comptime !(@TypeOf(saturation) == T and @TypeOf(lightness) == T and @TypeOf(alpha) == T)) {
         @compileError("All arguments must have the same type");
@@ -151,7 +165,7 @@ pub fn Hsla(hue: anytype, saturation: anytype, lightness: anytype, alpha: anytyp
 /// - 4 floats: `Hsv(360.0, 1.0, 1.0, 1.0)` for (h,s,v,a)
 /// - RGBA color: `Hsv(rgba("#FF0000"))`
 /// - HSLA color: `Hsv(hsla(360.0, 1.0, 0.5, 1.0))`
-pub fn Hsv(args: anytype) HSV {
+pub fn hsv(args: anytype) HSV {
     const ArgsType = @TypeOf(args);
 
     return switch (@typeInfo(ArgsType)) {

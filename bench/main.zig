@@ -1,8 +1,47 @@
 const std = @import("std");
 
 const bench = @import("bench.zig");
-const color_bench = @import("impl/color.zig");
 const ResultManager = @import("results.zig").ResultManager;
+
+const benchmarks = struct {
+    pub const rgba = @import("impl/rgba.zig").RgbaBench;
+};
+
+const BenchFn = struct {
+    name: []const u8,
+    func: fn () void,
+};
+
+// Simplified benchmark function discovery
+fn getBenchmarkFns(comptime T: type) []const BenchFn {
+    const type_info = @typeInfo(T);
+    if (type_info != .@"struct") {
+        if (type_info == .type) {
+            // Handle type references
+            return getBenchmarkFns(@TypeOf(@as(T, undefined)));
+        }
+        return &.{};
+    }
+
+    comptime {
+        var fns: []const BenchFn = &.{};
+        for (type_info.Struct.decls) |decl| {
+            const field = @field(T, decl.name);
+            const field_type = @TypeOf(field);
+
+            if (@typeInfo(field_type) == .Fn) {
+                const fn_info = @typeInfo(field_type).Fn;
+                if (fn_info.params.len == 0) {
+                    fns = fns ++ &[_]BenchFn{.{
+                        .name = decl.name,
+                        .func = field,
+                    }};
+                }
+            }
+        }
+        return fns;
+    }
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -12,34 +51,25 @@ pub fn main() !void {
     try ResultManager.init(allocator);
     defer ResultManager.deinit(allocator);
 
-    const configs = .{
-        bench.Config{ .name = "HSLA -> RGBA" },
-        bench.Config{ .name = "RGBA -> HSLA" },
-        bench.Config{ .name = "RGBA Blend" },
-        bench.Config{ .name = "RGBA Blend Multiple" },
-        bench.Config{ .name = "RGBA from HSLA" },
-        bench.Config{ .name = "RGBA from string" },
-    };
-
-    std.debug.print("\nfarbe.zig: iterations={d}\n", .{
-        configs[0].iterations,
-    });
+    std.debug.print("\nBenchmark Results:\n", .{});
     std.debug.print("--------------------------------------------------------------------------------\n", .{});
 
-    inline for (configs, 0..) |config, i| {
-        var result = try bench.run(allocator, config, switch (i) {
-            0 => color_bench.ColorBench.hslaToRgba,
-            1 => color_bench.ColorBench.rgbaToHsla,
-            2 => color_bench.ColorBench.rgbaBlend,
-            3 => color_bench.ColorBench.rgbaBlendMultiple,
-            4 => color_bench.ColorBench.fromHsla,
-            5 => color_bench.ColorBench.rgbaFromStr,
+    // Process benchmarks using comptime iteration
+    comptime {
+        for (@typeInfo(benchmarks).@"struct".decls) |decl| {
+            const module = @field(benchmarks, decl.name);
+            const bench_fns = getBenchmarkFns(@TypeOf(module));
 
-            else => unreachable,
-        });
-        bench.print(allocator, result);
-        try ResultManager.saveResult(&result);
-        result.deinit(allocator);
+            std.debug.print("\n{s} Benchmarks:\n", .{decl.name});
+
+            for (bench_fns) |bench_fn| {
+                const config = bench.Config{ .name = bench_fn.name };
+                var result = try bench.run(allocator, config, bench_fn.func);
+                try bench.print(allocator, result);
+                try ResultManager.saveResult(&result);
+                result.deinit(allocator);
+            }
+        }
     }
 
     try ResultManager.writeToFile(allocator);

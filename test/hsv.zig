@@ -5,9 +5,9 @@ const expectApproxEqAbs = std.testing.expectApproxEqAbs;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
 
 const farbe = @import("farbe");
-const Rgba = farbe.Rgba;
-const Hsla = farbe.Hsla;
-const Hsv = farbe.Hsv;
+const Rgba = farbe.rgba;
+const Hsla = farbe.hsla;
+const Hsv = farbe.hsv;
 
 test "hsv init" {
     const red = Hsv(.{ 0.0, 1.0, 1.0 });

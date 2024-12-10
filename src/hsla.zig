@@ -30,9 +30,7 @@ pub const HSLA = extern struct {
     ///
     /// This function converts a color from the HSLA color space to the RGBA color space.
     pub fn toRgba(self: HSLA) RGBA {
-        var normalized = self;
-        normalized.h = self.h / 360.0;
-        return RGBA.fromHsla(normalized);
+        return RGBA.fromHsla(self);
     }
 
     // Converts this `Hsla` color to an `Hsv` color.

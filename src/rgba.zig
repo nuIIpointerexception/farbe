@@ -31,24 +31,28 @@ pub const RGBA = packed struct {
             };
         }
 
-        const one_minus_self_alpha = 255 - self.a;
-        const other_alpha_scaled = @as(u16, other.a) * one_minus_self_alpha;
+        if (other.a == 0) return self;
+        if (self.a == 0) return other;
 
-        const final_alpha = @as(u16, self.a) + other_alpha_scaled / 255;
-        if (final_alpha == 0) return .{ .r = 0, .g = 0, .b = 0, .a = 0 };
+        // For 50% transparency, we want exactly half of each color
+        const sa = @as(u32, self.a);
+        const oa = @as(u32, other.a);
 
-        const inverse_final_alpha = @divTrunc(255 * 256, final_alpha);
-        const blend_factor = other_alpha_scaled / 255;
+        // Scale everything up by 256 for precise integer math
+        const factor = (oa * 256) / 255;
+        const inv_factor = 256 - factor;
 
-        const r = (self.r * self.a + other.r * blend_factor) * inverse_final_alpha >> 8;
-        const g = (self.g * self.a + other.g * blend_factor) * inverse_final_alpha >> 8;
-        const b = (self.b * self.a + other.b * blend_factor) * inverse_final_alpha >> 8;
+        const r = (@as(u32, self.r) * inv_factor + @as(u32, other.r) * factor + 128) >> 8;
+        const g = (@as(u32, self.g) * inv_factor + @as(u32, other.g) * factor + 128) >> 8;
+        const b = (@as(u32, self.b) * inv_factor + @as(u32, other.b) * factor + 128) >> 8;
+
+        const a = @min(255, (sa * 256 + (255 - sa) * oa + 128) >> 8);
 
         return .{
-            .r = @intCast(math.clamp(r, 0, 255)),
-            .g = @intCast(math.clamp(g, 0, 255)),
-            .b = @intCast(math.clamp(b, 0, 255)),
-            .a = @intCast(math.clamp(final_alpha, 0, 255)),
+            .r = @intCast(r),
+            .g = @intCast(g),
+            .b = @intCast(b),
+            .a = @intCast(a),
         };
     }
 
@@ -129,8 +133,9 @@ pub const RGBA = packed struct {
     ///
     /// If the string is not in a valid format, an error is returned.
     pub fn fromStr(string: []const u8) !RGBA {
-        if (string.len < 7 or string[0] != '#') return error.InvalidFormat;
-
+        if ((string.len != 7 and string.len != 9) or string[0] != '#') {
+            return error.InvalidFormat;
+        }
         const r = try hex.parse(string[1..3]);
         const g = try hex.parse(string[3..5]);
         const b = try hex.parse(string[5..7]);
@@ -149,7 +154,7 @@ pub const RGBA = packed struct {
     ///
     /// If the string is not in a valid format, a compile error is generated.
     pub fn comptimeFromStr(comptime string: []const u8) RGBA {
-        _ = valid.String(string);
+        _ = valid.IsHex(string);
 
         const parseHexPair = struct {
             fn parse(comptime str: []const u8, comptime offset: usize) u8 {
@@ -176,39 +181,37 @@ pub const RGBA = packed struct {
     ///
     /// This function converts a color from the HSLA (Hue, Saturation, Lightness, Alpha)
     /// color space to the RGBA color space.
-    pub fn fromHsla(color: @import("hsla.zig").HSLA) RGBA {
-        if (color.s == 0.0) {
-            const v = @as(u8, @intFromFloat(color.l * 255.0));
-            return .{ .r = v, .g = v, .b = v, .a = @intFromFloat(color.a * 255.0) };
+    pub fn fromHsla(hsla: @import("hsla.zig").HSLA) RGBA {
+        if (hsla.s <= 0.0) {
+            const v: u8 = @intFromFloat(hsla.l * 255.0);
+            return .{ .r = v, .g = v, .b = v, .a = @intFromFloat(hsla.a * 255.0) };
         }
 
-        const q = if (color.l < 0.5)
-            color.l * (1.0 + color.s)
-        else
-            color.l + color.s - color.l * color.s;
-        const p = 2.0 * color.l - q;
-        const h_adj = color.h * 6.0;
+        const h_norm: f32 = @mod(hsla.h, 360.0) / 60.0;
+        const sector: u3 = @intFromFloat(h_norm);
+        const frac: f32 = h_norm - @as(f32, @floatFromInt(sector));
 
-        const hueToRgb = struct {
-            inline fn calc(t: f32, pp: f32, qq: f32) u8 {
-                const tt = if (t < 0.0) t + 6.0 else if (t >= 6.0) t - 6.0 else t;
-                const v = if (tt < 1.0)
-                    pp + (qq - pp) * tt
-                else if (tt < 3.0)
-                    qq
-                else if (tt < 4.0)
-                    pp + (qq - pp) * (4.0 - tt)
-                else
-                    pp;
-                return @intFromFloat(v * 255.0);
-            }
-        }.calc;
+        const k: f32 = 1.0 - @abs(2.0 * hsla.l - 1.0);
+        const chroma: f32 = k * hsla.s;
+        const x: f32 = chroma * (1.0 - @abs(2.0 * frac - 1.0));
+        const m: f32 = hsla.l - 0.5 * chroma;
+
+        const rgb = switch (sector) {
+            0 => .{ chroma, x, 0.0 },
+            1 => .{ x, chroma, 0.0 },
+            2 => .{ 0.0, chroma, x },
+            3 => .{ 0.0, x, chroma },
+            4 => .{ x, 0.0, chroma },
+            else => .{ chroma, 0.0, x },
+        };
+
+        const m255: f32 = m * 255.0;
 
         return .{
-            .r = hueToRgb(h_adj + 2.0, p, q),
-            .g = hueToRgb(h_adj, p, q),
-            .b = hueToRgb(h_adj + 4.0, p, q),
-            .a = @intFromFloat(color.a * 255.0),
+            .r = @intFromFloat(rgb[0] * 255.0 + m255),
+            .g = @intFromFloat(rgb[1] * 255.0 + m255),
+            .b = @intFromFloat(rgb[2] * 255.0 + m255),
+            .a = @intFromFloat(hsla.a * 255.0),
         };
     }
 
@@ -217,63 +220,103 @@ pub const RGBA = packed struct {
     /// This function converts a color from the RGBA color space to the HSLA
     /// (Hue, Saturation, Lightness, Alpha) color space.
     pub fn toHsla(self: RGBA) @import("hsla.zig").HSLA {
-        const rf = @as(f32, @floatFromInt(self.r)) / 255.0;
-        const gf = @as(f32, @floatFromInt(self.g)) / 255.0;
-        const bf = @as(f32, @floatFromInt(self.b)) / 255.0;
-        const af = @as(f32, @floatFromInt(self.a)) / 255.0;
-
-        if (self.r == self.g and self.g == self.b) {
-            return .{ .h = 0, .s = 0, .l = rf, .a = af };
-        }
-
-        const max = @max(rf, @max(gf, bf));
-        const min = @min(rf, @min(gf, bf));
-        const delta = max - min;
-        const l = (max + min) * 0.5;
-
-        const s = if (l <= 0.5)
-            delta / (max + min)
-        else
-            delta / (2.0 - max - min);
-
-        const h = switch (@as(u2, @intFromBool(max == rf)) | (@as(u2, @intFromBool(max == gf)) << 1)) {
-            0b01 => @mod((gf - bf) / delta, 6.0) / 6.0,
-            0b10 => ((bf - rf) / delta + 2.0) / 6.0,
-            else => ((rf - gf) / delta + 4.0) / 6.0,
+        const inv255: f32 = 1.0 / 255.0;
+        const rgb = .{
+            @as(f32, @floatFromInt(self.r)) * inv255,
+            @as(f32, @floatFromInt(self.g)) * inv255,
+            @as(f32, @floatFromInt(self.b)) * inv255,
         };
 
-        return .{ .h = h, .s = s, .l = l, .a = af };
+        const max: f32 = @max(rgb[0], @max(rgb[1], rgb[2]));
+        const min: f32 = @min(rgb[0], @min(rgb[1], rgb[2]));
+        const diff: f32 = max - min;
+
+        if (diff < 1e-6) {
+            return .{
+                .h = 0.0,
+                .s = 0.0,
+                .l = max,
+                .a = @as(f32, @floatFromInt(self.a)) * inv255,
+            };
+        }
+
+        const l: f32 = (max + min) * 0.5;
+        const s: f32 = diff / (if (l <= 0.5) max + min else 2.0 - max - min);
+
+        var h: f32 = undefined;
+        if (max == rgb[0]) {
+            h = (rgb[1] - rgb[2]) / diff;
+            if (rgb[1] < rgb[2]) {
+                h += 6.0;
+            }
+        } else if (max == rgb[1]) {
+            h = (rgb[2] - rgb[0]) / diff + 2.0;
+        } else {
+            h = (rgb[0] - rgb[1]) / diff + 4.0;
+        }
+        h *= 60.0;
+
+        return .{ .h = h, .s = s, .l = l, .a = @as(f32, @floatFromInt(self.a)) * inv255 };
     }
 
     /// Converts this `Rgba` color to an `Hsv` color.
     ///
     /// This function creates a new `Rgba` color from an `Hsv` color.
     pub fn fromHsv(color: @import("hsv.zig").HSV) RGBA {
-        const h = color.h * 6.0;
-        const s = color.s;
-        const v = color.v;
-
-        if (s <= 0) {
-            const val: u8 = @intFromFloat(@round(v * 255.0));
+        // Handle grayscale case
+        if (color.s <= 0.0) {
+            const val: u8 = @intFromFloat(@round(color.v * 255.0));
             return .{ .r = val, .g = val, .b = val, .a = @intFromFloat(@round(color.a * 255.0)) };
         }
 
-        const sector = @as(u3, @intFromFloat(@floor(h)));
-        const f = h - @floor(h);
-        const p = v * (1.0 - s);
-        const q = v * (1.0 - s * f);
-        const t = v * (1.0 - s * (1.0 - f));
+        // Normalize hue to [0, 360) range
+        const h = @mod(color.h, 360.0);
+        const s = color.s;
+        const v = color.v;
 
-        const rgb = switch (sector) {
-            0 => .{ v, t, p },
-            1 => .{ q, v, p },
-            2 => .{ p, v, t },
-            3 => .{ p, q, v },
-            4 => .{ t, p, v },
-            else => .{ v, p, q },
+        // Instead of doing sector calculation, explicitly handle each 60° segment
+        var r: f32 = undefined;
+        var g: f32 = undefined;
+        var b: f32 = undefined;
+
+        const c = v * s;
+        const x = c * (1.0 - @abs(@mod(h / 60.0, 2.0) - 1.0));
+        const m = v - c;
+
+        if (h < 60.0) {
+            r = c;
+            g = x;
+            b = 0.0;
+        } else if (h < 120.0) {
+            r = x;
+            g = c;
+            b = 0.0;
+        } else if (h < 180.0) {
+            r = 0.0;
+            g = c;
+            b = x;
+        } else if (h < 240.0) {
+            r = 0.0;
+            g = x;
+            b = c;
+        } else if (h < 300.0) {
+            r = x;
+            g = 0.0;
+            b = c;
+        } else {
+            r = c;
+            g = 0.0;
+            b = x;
+        }
+
+        const rgb = .{
+            .r = @as(u8, @intFromFloat(@round((r + m) * 255.0))),
+            .g = @as(u8, @intFromFloat(@round((g + m) * 255.0))),
+            .b = @as(u8, @intFromFloat(@round((b + m) * 255.0))),
+            .a = @as(u8, @intFromFloat(@round(color.a * 255.0))),
         };
 
-        return .{ .r = @intFromFloat(@round(rgb[0] * 255.0)), .g = @intFromFloat(@round(rgb[1] * 255.0)), .b = @intFromFloat(@round(rgb[2] * 255.0)), .a = @intFromFloat(@round(color.a * 255.0)) };
+        return rgb;
     }
 
     /// Converts this `Rgba` color to an `Hsv` color.
@@ -290,12 +333,13 @@ pub const RGBA = packed struct {
         const delta = max - min;
 
         var h: f32 = 0;
-        if (delta != 0) {
-            h = switch (@as(u2, @intFromBool(max == r)) | (@as(u2, @intFromBool(max == g)) << 1)) {
-                0b01 => 60.0 * @mod((g - b) / delta, 6.0),
-                0b10 => 60.0 * ((b - r) / delta + 2.0),
-                else => 60.0 * ((r - g) / delta + 4.0),
-            };
+        if (delta > 0) {
+            h = if (max == r)
+                60.0 * @mod((g - b) / delta, 6.0)
+            else if (max == g)
+                60.0 * ((b - r) / delta + 2.0)
+            else
+                60.0 * ((r - g) / delta + 4.0);
         }
         if (h < 0) h += 360;
 

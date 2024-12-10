@@ -97,38 +97,37 @@ pub const HSV = extern struct {
     ///
     /// This function converts a color from the HSV color space to the RGBA color space.
     pub fn toRgba(self: HSV) RGBA {
-        const h = self.h;
-        const s = self.s;
-        const v = self.v;
-
-        if (s <= 0.0) {
-            const val: u8 = @intFromFloat(@round(v * 255.0));
-            return .{
-                .r = val,
-                .g = val,
-                .b = val,
-                .a = @intFromFloat(@round(self.a * 255.0)),
-            };
+        if (self.s <= 0.0) {
+            const val: u8 = @intFromFloat(@round(self.v * 255.0));
+            return .{ .r = val, .g = val, .b = val, .a = @intFromFloat(@round(self.a * 255.0)) };
         }
 
-        const h_sector = h * 6.0;
-        const sector = @as(u3, @intFromFloat(@floor(h_sector)));
-        const f = h_sector - @floor(h_sector);
+        const h = @mod(self.h, 360.0) / 60.0;
+        const sector = @as(u3, @intFromFloat(@floor(h)));
+        const f = h - @floor(h);
 
-        const p = v * (1.0 - s);
-        const q = v * (1.0 - s * f);
-        const t = v * (1.0 - s * (1.0 - f));
-
-        const rgb = switch (sector) {
-            0 => .{ v, t, p },
-            1 => .{ q, v, p },
-            2 => .{ p, v, t },
-            3 => .{ p, q, v },
-            4 => .{ t, p, v },
-            else => .{ v, p, q },
+        const pqt = .{
+            self.v * (1.0 - self.s),
+            self.v * (1.0 - self.s * f),
+            self.v * (1.0 - self.s * (1.0 - f)),
         };
 
-        return .{ .r = @intFromFloat(@round(rgb[0] * 255.0)), .g = @intFromFloat(@round(rgb[1] * 255.0)), .b = @intFromFloat(@round(rgb[2] * 255.0)), .a = @intFromFloat(@round(self.a * 255.0)) };
+        const rgb = switch (sector) {
+            0 => .{ self.v, pqt[2], pqt[0] },
+            1 => .{ pqt[1], self.v, pqt[0] },
+            2 => .{ pqt[0], self.v, pqt[2] },
+            3 => .{ pqt[0], pqt[1], self.v },
+            4 => .{ pqt[2], pqt[0], self.v },
+            else => .{ self.v, pqt[0], pqt[1] },
+        };
+
+        const factor: f32 = 255.0;
+        return .{
+            .r = @intFromFloat(@round(rgb[0] * factor)),
+            .g = @intFromFloat(@round(rgb[1] * factor)),
+            .b = @intFromFloat(@round(rgb[2] * factor)),
+            .a = @intFromFloat(@round(self.a * factor)),
+        };
     }
 
     /// Creates a new `Hsv` color from an `Hsla` color.
